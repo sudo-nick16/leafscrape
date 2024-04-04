@@ -1,45 +1,17 @@
 import os
 from playwright import sync_api
 from dotenv import dotenv_values
+from utils import *
 
 env = dotenv_values(".env")
 
-def get_env(key: str, default_value: str = ""):
-    value = env[key]
-    if value is None:
-        return default_value
-    return value
-
 credentials = {
-        "username": get_env("USERNAME"),
-        "password": get_env("PASSWORD")
+    "username": assert_str(env["USERNAME"]),
+    "password": assert_str(env["PASSWORD"])
 }
 
 main_page_url = "https://www.aepenergy.com/"
 login_page_url = "https://www.aepenergy.com/residential/rates-plans/login/"
-
-def get_ext(name: str) -> str:
-    parts = name.split(".")
-    if len(parts) == 1:
-        return ""
-    return parts[-1]
-
-def gen_file_name(period: str, suffix: str = "", ext: str = "pdf")->str:
-    if len(period) == 0:
-        return "unknown"
-    period = period.replace("/", "_")
-    period = period.replace(" ", "")
-    period = period + suffix + "." + ext
-    return period
-
-def gen_csv(path: str, data: list[list[str]]):
-    csv = ""
-    for row in data:
-        csv += ",".join(row) + "\n"
-
-    with open(path, "w") as f:
-        f.write(csv)
-
 
 def get_utility_data(outdir: str) -> list:
     utility_data: list[list[str]] = []
