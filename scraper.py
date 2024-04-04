@@ -1,4 +1,6 @@
 import os
+import sys
+import re
 from playwright import sync_api
 from dotenv import dotenv_values
 from utils import *
@@ -13,69 +15,88 @@ credentials = {
 main_page_url = "https://www.aepenergy.com/"
 login_page_url = "https://www.aepenergy.com/residential/rates-plans/login/"
 
-def get_utility_data(outdir: str) -> list:
+def get_utility_data(months: int, outdir: str) -> list:
     utility_data: list[list[str]] = []
     utility_data.append(["from (MM/DD/YYYY)", "to (MM/DD/YYYY)", "statement", "statement_details"])
 
     with sync_api.sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
-        page.goto(login_page_url)
+        try:
+            page.goto(login_page_url)
 
-        user_input = page.get_by_role("textbox", name="username")
-        user_input.fill(credentials["username"])
+            user_input = page.get_by_role("textbox", name="username")
+            user_input.fill(credentials["username"])
 
-        pass_input = page.get_by_role("textbox", name="password")
-        pass_input.fill(credentials["password"])
+            pass_input = page.get_by_role("textbox", name="password")
+            pass_input.fill(credentials["password"])
 
-        login_btn = page.get_by_role("button", name="Login")
-        login_btn.click()
+            login_btn = page.get_by_role("button", name="Login")
+            login_btn.click()
 
-        acc_page: sync_api.Page = page.wait_for_event("popup")
+            acc_page: sync_api.Page = page.wait_for_event("popup")
 
-        view_stmt_btn = acc_page.get_by_role("link", name="View All Statements")
-        view_stmt_btn.click()
+            view_stmt_btn = acc_page.get_by_role("link", name="View All Statements")
+            view_stmt_btn.click()
 
-        trows = acc_page.locator("#row > tbody > tr").all()
+            view_all_btn = acc_page.get_by_role("link", name="View All").first
+            view_all_btn.click()
 
-        for row in trows:
-            period_el = row.locator("td:nth-child(1)")
+            acc_page.wait_for_url(re.compile("pagesize=0"))
 
-            stmt_el = row.locator("td:nth-child(2)")
+            trows = acc_page.locator("#row > tbody > tr").all()
 
-            stmt_det_el = row.locator("td:nth-child(3)")
+            for i, row in enumerate(trows):
+                if i >= months:
+                    break
 
-            with acc_page.expect_download() as download_info:
-                stmt_el.click()
-            download = download_info.value
+                period_el = row.locator("td:nth-child(1)")
 
-            stmt_name = gen_file_name(period_el.inner_text(), ext=get_ext(download.suggested_filename))
-            stmt_path = f"{outdir}/{stmt_name}"
-            download.save_as(stmt_path)
+                stmt_el = row.locator("td:nth-child(2)")
 
-            with acc_page.expect_download() as download_info:
-                stmt_det_el.click()
-            download = download_info.value
+                stmt_det_el = row.locator("td:nth-child(3)")
 
-            stmtd_name = gen_file_name(period_el.inner_text(), "_details", get_ext(download.suggested_filename))
-            stmtd_path = f"{outdir}/{stmtd_name}"
-            download.save_as(stmtd_path)
+                with acc_page.expect_download() as download_info:
+                    stmt_el.click()
+                download = download_info.value
 
-            period = period_el.inner_text().split("-")
-            if len(period) < 2:
-                print("Invalid Period -", period_el.inner_text())
-                continue
+                stmt_name = gen_file_name(period_el.inner_text(), ext=get_ext(download.suggested_filename))
+                stmt_path = f"{outdir}/{stmt_name}"
+                download.save_as(stmt_path)
 
-            from_date = period[0]
-            to_date = period[1]
+                with acc_page.expect_download() as download_info:
+                    stmt_det_el.click()
+                download = download_info.value
 
-            utility_data.append([from_date, to_date, stmt_path, stmtd_path])
+                stmtd_name = gen_file_name(period_el.inner_text(), "_details", get_ext(download.suggested_filename))
+                stmtd_path = f"{outdir}/{stmtd_name}"
+                download.save_as(stmtd_path)
 
-        browser.close()
+                period = period_el.inner_text().split("-")
+                if len(period) < 2:
+                    print("Invalid Period -", period_el.inner_text())
+                    continue
 
-        return utility_data
+                from_date = period[0]
+                to_date = period[1]
 
-path = os.path.relpath("downloaded_statements")
-data = get_utility_data(path)
-print(data)
+                utility_data.append([from_date, to_date, stmt_path, stmtd_path])
+
+        except Exception as e:
+            print("[ERROR]:",e)
+
+        finally:
+            browser.close()
+
+    return utility_data
+
+outpath = os.path.relpath("downloaded_statements")
+nmonths = int(sys.argv[1]) if len(sys.argv) > 1 else 12
+
+print(f"Getting utility data for the last {nmonths} months..")
+data = get_utility_data(nmonths, outpath)
+
+print("Generating CSV..")
 gen_csv("utility_data.csv", data)
+
+print("Done..")

@@ -10,5 +10,5 @@ Setup `.env` file or environment variables by referring `.env.example`.
 ```
 virtualenv venv
 pip install -r requirements.txt
-python scraper.py
+python scraper.py 12
 ```
